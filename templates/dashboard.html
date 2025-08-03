@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🚀 RENDER Trading Dashboard</title>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Socket.IO -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
+    
+    <style>
+        body {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: white;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        .dashboard-header {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            margin-bottom: 20px;
+            padding: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .stat-card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            transition: transform 0.3s ease;
+        }
+        
+        .stat-card:hover {
+            transform: translateY(-5px);
+        }
+        
+        .price-display {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: #00ff88;
+            text-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
+        }
+        
+        .price-change {
+            font-size: 1.2rem;
+            font-weight: bold;
+        }
+        
+        .positive {
+            color: #00ff88;
+        }
+        
+        .negative {
+            color: #ff4757;
+        }
+        
+        .chart-container {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            height: 400px;
+        }
+        
+        .indicator-card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 15px;
+            margin-bottom: 15px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
+        }
+        
+        .status-online {
+            background: #00ff88;
+            box-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
+        }
+        
+        .status-offline {
+            background: #ff4757;
+            box-shadow: 0 0 10px rgba(255, 71, 87, 0.5);
+        }
+        
+        .pulse {
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        
+        .loading-spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: #00ff88;
+            animation: spin 1s ease-in-out infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .analysis-panel {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .recommendation-badge {
+            font-size: 1.5rem;
+            font-weight: bold;
+            padding: 10px 20px;
+            border-radius: 25px;
+            text-align: center;
+            margin: 10px 0;
+        }
+        
+        .rec-buy {
+            background: linear-gradient(45deg, #00ff88, #00d4aa);
+            color: #000;
+        }
+        
+        .rec-sell {
+            background: linear-gradient(45deg, #ff4757, #ff3838);
+            color: #fff;
+        }
+        
+        .rec-hold {
+            background: linear-gradient(45deg, #ffa502, #ff6348);
+            color: #fff;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <!-- Header -->
+        <div class="dashboard-header">
+            <div class="row align-items-center">
+                <div class="col-md-6">
+                    <h1><i class="fas fa-chart-line"></i> RENDER Trading Dashboard</h1>
+                    <p class="mb-0">Real-time Teknik Analiz & Trading Sinyalleri</p>
+                </div>
+                <div class="col-md-6 text-end">
+                    <div class="d-flex justify-content-end align-items-center">
+                        <span class="status-indicator status-offline pulse" id="connectionStatus"></span>
+                        <span id="connectionText">Bağlanıyor...</span>
+                        <span class="loading-spinner ms-2" id="loadingSpinner"></span>
+                    </div>
+                    <small class="text-muted" id="lastUpdate">Son güncelleme: --</small>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <!-- Sol Panel - Fiyat ve İstatistikler -->
+            <div class="col-lg-8">
+                <!-- Fiyat Kartları -->
+                <div class="row">
+                    <div class="col-md-3">
+                        <div class="stat-card text-center">
+                            <i class="fas fa-dollar-sign fa-2x mb-2 text-warning"></i>
+                            <h6>Güncel Fiyat</h6>
+                            <div class="price-display" id="currentPrice">$0.0000</div>
+                            <div class="price-change" id="priceChange">+0.00%</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="stat-card text-center">
+                            <i class="fas fa-arrow-up fa-2x mb-2 text-success"></i>
+                            <h6>24s Yüksek</h6>
+                            <div class="h4" id="high24h">$0.0000</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="stat-card text-center">
+                            <i class="fas fa-arrow-down fa-2x mb-2 text-danger"></i>
+                            <h6>24s Düşük</h6>
+                            <div class="h4" id="low24h">$0.0000</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="stat-card text-center">
+                            <i class="fas fa-chart-bar fa-2x mb-2 text-info"></i>
+                            <h6>24s Hacim</h6>
+                            <div class="h4" id="volume24h">$0</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Fiyat Grafiği -->
+                <div class="chart-container">
+                    <canvas id="priceChart"></canvas>
+                </div>
+
+                <!-- Teknik İndikatörler -->
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="indicator-card">
+                            <h6><i class="fas fa-chart-line"></i> RSI (14)</h6>
+                            <div class="progress mb-2">
+                                <div class="progress-bar" id="rsiBar" role="progressbar" style="width: 50%"></div>
+                            </div>
+                            <div class="d-flex justify-content-between">
+                                <small>Aşırı Satım (30)</small>
+                                <span id="rsiValue">50.0</span>
+                                <small>Aşırı Alım (70)</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="indicator-card">
+                            <h6><i class="fas fa-wave-square"></i> MACD</h6>
+                            <div class="h5" id="macdSignal">NEUTRAL</div>
+                            <small class="text-muted">Momentum göstergesi</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sağ Panel - Analiz ve Sinyaller -->
+            <div class="col-lg-4">
+                <!-- Analiz Paneli -->
+                <div class="analysis-panel">
+                    <h5><i class="fas fa-brain"></i> AI Analiz Sonucu</h5>
+                    <div class="recommendation-badge rec-buy" id="recommendation">
+                        <i class="fas fa-robot"></i> Analiz Yapılıyor...
+                    </div>
+                    <div class="row">
+                        <div class="col-6">
+                            <small>Güven Oranı</small>
+                            <div class="h4" id="confidence">--%</div>
+                        </div>
+                        <div class="col-6">
+                            <small>Sinyal Gücü</small>
+                            <div class="h4" id="signalStrength">--</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Piyasa Durumu -->
+                <div class="stat-card mt-3">
+                    <h6><i class="fas fa-globe"></i> Piyasa Durumu</h6>
+                    <div class="row">
+                        <div class="col-6">
+                            <small>Trend</small>
+                            <div class="h6" id="marketTrend">Analiz Ediliyor...</div>
+                        </div>
+                        <div class="col-6">
+                            <small>Volatilite</small>
+                            <div class="h6" id="volatility">Normal</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Hızlı Aksiyonlar -->
+                <div class="stat-card">
+                    <h6><i class="fas fa-lightning-bolt"></i> Hızlı Aksiyonlar</h6>
+                    <div class="d-grid gap-2">
+                        <button class="btn btn-success" onclick="runAnalysis()">
+                            <i class="fas fa-play"></i> Analiz Çalıştır
+                        </button>
+                        <button class="btn btn-info" onclick="refreshData()">
+                            <i class="fas fa-sync"></i> Verileri Yenile
+                        </button>
+                        <button class="btn btn-warning" onclick="exportData()">
+                            <i class="fas fa-download"></i> Verileri İndir
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Son Sinyaller -->
+                <div class="stat-card">
+                    <h6><i class="fas fa-history"></i> Son Sinyaller</h6>
+                    <div id="recentSignals">
+                        <small class="text-muted">Sinyaller yükleniyor...</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <script>
+        // Global değişkenler
+        let socket;
+        let priceChart;
+        let isConnected = false;
+        let lastData = null;
+
+        // Socket.IO bağlantısı
+        function initializeSocket() {
+            socket = io();
+            
+            socket.on('connect', function() {
+                console.log('WebSocket bağlantısı kuruldu');
+                isConnected = true;
+                updateConnectionStatus(true);
+                socket.emit('request_data');
+            });
+            
+            socket.on('disconnect', function() {
+                console.log('WebSocket bağlantısı kesildi');
+                isConnected = false;
+                updateConnectionStatus(false);
+            });
+            
+            socket.on('data_update', function(data) {
+                console.log('Veri güncellendi:', data);
+                updateDashboard(data);
+                lastData = data;
+            });
+            
+            socket.on('status', function(data) {
+                console.log('Status:', data.msg);
+            });
+        }
+
+        // Bağlantı durumunu güncelle
+        function updateConnectionStatus(connected) {
+            const statusEl = document.getElementById('connectionStatus');
+            const textEl = document.getElementById('connectionText');
+            const spinnerEl = document.getElementById('loadingSpinner');
+            
+            if (connected) {
+                statusEl.className = 'status-indicator status-online pulse';
+                textEl.textContent = 'Bağlı - Real-time';
+                spinnerEl.style.display = 'none';
+            } else {
+                statusEl.className = 'status-indicator status-offline pulse';
+                textEl.textContent = 'Bağlantı Kesildi';
+                spinnerEl.style.display = 'inline-block';
+            }
+        }
+
+        // Dashboard verilerini güncelle
+        function updateDashboard(data) {
+            // Fiyat bilgileri
+            document.getElementById('currentPrice').textContent = `$${data.current_price.toFixed(4)}`;
+            
+            const changeEl = document.getElementById('priceChange');
+            const change = data.price_change_24h;
+            changeEl.textContent = `${change >= 0 ? '+' : ''}${change.toFixed(2)}%`;
+            changeEl.className = `price-change ${change >= 0 ? 'positive' : 'negative'}`;
+            
+            document.getElementById('high24h').textContent = `$${data.high_24h.toFixed(4)}`;
+            document.getElementById('low24h').textContent = `$${data.low_24h.toFixed(4)}`;
+            document.getElementById('volume24h').textContent = `$${formatNumber(data.volume_24h)}`;
+            
+            // RSI güncelle
+            const rsi = data.rsi;
+            document.getElementById('rsiValue').textContent = rsi.toFixed(1);
+            document.getElementById('rsiBar').style.width = `${rsi}%`;
+            
+            // RSI renk kodlaması
+            const rsiBar = document.getElementById('rsiBar');
+            if (rsi < 30) {
+                rsiBar.className = 'progress-bar bg-success';
+            } else if (rsi > 70) {
+                rsiBar.className = 'progress-bar bg-danger';
+            } else {
+                rsiBar.className = 'progress-bar bg-warning';
+            }
+            
+            // Grafik güncelle
+            updateChart(data.chart_data);
+            
+            // Son güncelleme zamanı
+            document.getElementById('lastUpdate').textContent = 
+                `Son güncelleme: ${new Date(data.last_update).toLocaleTimeString('tr-TR')}`;
+        }
+
+        // Grafik oluştur ve güncelle
+        function initializeChart() {
+            const ctx = document.getElementById('priceChart').getContext('2d');
+            priceChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'RENDER/USDT',
+                        data: [],
+                        borderColor: '#00ff88',
+                        backgroundColor: 'rgba(0, 255, 136, 0.1)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            labels: {
+                                color: 'white'
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            ticks: {
+                                color: 'white'
+                            },
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            }
+                        },
+                        y: {
+                            ticks: {
+                                color: 'white'
+                            },
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateChart(chartData) {
+            if (!priceChart || !chartData) return;
+            
+            const labels = chartData.map(d => new Date(d.time).toLocaleTimeString('tr-TR', {
+                hour: '2-digit',
+                minute: '2-digit'
+            }));
+            const prices = chartData.map(d => d.close);
+            
+            priceChart.data.labels = labels;
+            priceChart.data.datasets[0].data = prices;
+            priceChart.update('none');
+        }
+
+        // Yardımcı fonksiyonlar
+        function formatNumber(num) {
+            if (num >= 1e9) return (num / 1e9).toFixed(1) + 'B';
+            if (num >= 1e6) return (num / 1e6).toFixed(1) + 'M';
+            if (num >= 1e3) return (num / 1e3).toFixed(1) + 'K';
+            return num.toFixed(0);
+        }
+
+        // Buton fonksiyonları
+        function runAnalysis() {
+            fetch('/api/analysis')
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('recommendation').textContent = data.recommendation;
+                    document.getElementById('confidence').textContent = `${data.confidence}%`;
+                    
+                    // Recommendation renk kodlaması
+                    const recEl = document.getElementById('recommendation');
+                    if (data.recommendation === 'AL') {
+                        recEl.className = 'recommendation-badge rec-buy';
+                    } else if (data.recommendation === 'SAT') {
+                        recEl.className = 'recommendation-badge rec-sell';
+                    } else {
+                        recEl.className = 'recommendation-badge rec-hold';
+                    }
+                })
+                .catch(error => console.error('Analiz hatası:', error));
+        }
+
+        function refreshData() {
+            if (socket && isConnected) {
+                socket.emit('request_data');
+            } else {
+                fetch('/api/data')
+                    .then(response => response.json())
+                    .then(data => updateDashboard(data))
+                    .catch(error => console.error('Veri yenileme hatası:', error));
+            }
+        }
+
+        function exportData() {
+            if (lastData) {
+                const dataStr = JSON.stringify(lastData, null, 2);
+                const dataBlob = new Blob([dataStr], {type: 'application/json'});
+                const url = URL.createObjectURL(dataBlob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `render_data_${new Date().toISOString().slice(0, 19)}.json`;
+                link.click();
+            }
+        }
+
+        // Sayfa yüklendiğinde başlat
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('Dashboard başlatılıyor...');
+            initializeChart();
+            initializeSocket();
+            
+            // İlk veri yüklemesi
+            setTimeout(() => {
+                if (!isConnected) {
+                    refreshData();
+                }
+            }, 2000);
+        });
+    </script>
+</body>
+</html>
